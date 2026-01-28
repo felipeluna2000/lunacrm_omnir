@@ -1,0 +1,5 @@
+Options -Indexes
+
+# use the below for php error logging - log_errors On or Off
+php_flag log_errors On
+php_value error_log /var/www/sites/logs/praesto-php-errors.log
