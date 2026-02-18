@@ -8,6 +8,12 @@
  * All Rights Reserved.
  *************************************************************************************/
 
+// Autoloader must be first to avoid class not found errors in included files
+require_once 'vendor/autoload.php';
+
+// Utils sets up DB and global environment
+require_once 'include/utils/utils.php';
+
 require_once 'modules/Oauth2/handlers/TokenRefresher.php';
 
 $tokenRefresher = new Oauth2_TokenRefresher_Handler();

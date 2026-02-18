@@ -9,9 +9,11 @@
  ************************************************************************************/
 require_once "modules/Oauth2/Config.php";
 
-class Oauth2_Usercallback_Callbacks {
+class Oauth2_Usercallback_Callbacks
+{
 
-    protected static function ensureLogin($requireAdmin=false) {
+    protected static function ensureLogin($requireAdmin = false)
+    {
         if (!isset($_SESSION['authenticated_user_id']) || empty($_SESSION['authenticated_user_id'])) {
             static::redirectToCRM();
             return;
@@ -29,26 +31,30 @@ class Oauth2_Usercallback_Callbacks {
         }
     }
 
-    protected static function redirectToCRM() {
+    protected static function redirectToCRM()
+    {
         global $site_URL;
-        header (sprintf("Location: %s/index.php", trim($site_URL, '/')));
+        header(sprintf("Location: %s/index.php", trim($site_URL, '/')));
         exit;
     }
 
-    public static function handleRequest($config, $req) {
+    public static function handleRequest($config, $req)
+    {
         if (isset($req["error"]) && !empty($req["error"])) {
             echo htmlspecialchars($_REQUEST['error'], ENT_QUOTES, 'UTF-8');
             exit;
         }
 
         session_start();
-        
+
+        error_log("Oauth2_Usercallback_Callbacks::handleRequest: " . print_r($req, true));
+
         // Ensure Right User.
         // callback is done against externally service. Successfully login does not mean rights to change CRM state.
         // Example: Non-admin should not be able alter unexpected system configuration
         // with direct visit to the oauth2callback when auth is for specifically CRM admin only.
         $authfor = (isset($req['authfor'])) ? $req['authfor'] : (isset($_SESSION['oauth2for']) ? $_SESSION['oauth2for'] : "");
-        switch($authfor) {
+        switch ($authfor) {
             case "OutgoingServer":
                 static::ensureLogin(true);
                 break;
@@ -69,7 +75,7 @@ class Oauth2_Usercallback_Callbacks {
             echo "Unknown service provider";
             exit;
         }
-        
+
         if (empty($authcfg["clientId"]) || empty($authcfg["clientSecret"])) {
             echo "Please setup configuration.";
             exit;
@@ -79,28 +85,21 @@ class Oauth2_Usercallback_Callbacks {
 
         if (!isset($req['code'])) {
             // step 1
-			
-			global $site_URL,$current_user;
-            
+
+            global $site_URL, $current_user;
+
             $parsed_url = parse_url($site_URL);
-            $payload  = $parsed_url['host']."||".$current_user->id."||".$req['authfor']."||".$req['authservice'];
+            $payload  = $parsed_url['host'] . "||" . $current_user->id . "||" . $req['authfor'] . "||" . $req['authservice'];
             $state = base64_encode($payload);
-			
-			if(isset($req['interaction_required'])){
-				$authurl = $provider->getAuthorizationUrl([
-					'access_type' => 'offline',  
-					'state' => $state,
-					'prompt' => 'consent'
-				]); 
-			} else {
-				$authurl = $provider->getAuthorizationUrl([
-					'access_type' => 'offline',  
-					'state' => $state,
-					'prompt' => 'none'
-				]); 
-			}
-			
-			/* this will force login each-time so refresh-token is obtained */
+
+            // Always force consent to ensure we get a refresh_token and avoid interaction_required errors
+            $authurl = $provider->getAuthorizationUrl([
+                'access_type' => 'offline',
+                'state' => $state,
+                'prompt' => 'consent' // Forces consent screen, yields refresh_token
+            ]);
+
+            /* this will force login each-time so refresh-token is obtained */
             $_SESSION['oauth2state'] = $provider->getState();
             $_SESSION['oauth2for'] = isset($req['authfor']) ? $req['authfor'] : "";
             $_SESSION['oauth2svc'] = isset($req['authservice']) ? $req['authservice'] : "";
@@ -109,7 +108,7 @@ class Oauth2_Usercallback_Callbacks {
             // will end up with bad-request due to conflict.
             $authurl = str_replace("approval_prompt=auto", "", $authurl);
 
-            header ("Location: $authurl");
+            header("Location: $authurl");
             exit;
         } else if (isset($req['state']) && isset($_SESSION['oauth2state']) && $req['state'] != $_SESSION['oauth2state']) {
             // something wrong
@@ -121,7 +120,8 @@ class Oauth2_Usercallback_Callbacks {
             try {
 
                 $accessToken = $provider->getAccessToken(
-                    "authorization_code", ["code" => $req["code"]]
+                    "authorization_code",
+                    ["code" => $req["code"]]
                 );
 
                 // We have an access token, which we may use in authenticated
@@ -129,33 +129,34 @@ class Oauth2_Usercallback_Callbacks {
                 $accessTokenValue = $accessToken->getToken();
                 $refreshTokenValue = $accessToken->getRefreshToken();
                 $accessTokenExpiresOn = $accessToken->getExpires();
-               
+
                 $resourceOwner = $provider->getResourceOwner($accessToken);
                 $userinfo = $resourceOwner ? $resourceOwner->toArray() : null;
 
                 $oauth2for = isset($_SESSION['oauth2for']) ? $_SESSION['oauth2for'] : "";
                 $oauth2svc = isset($_SESSION['oauth2svc']) ? $_SESSION['oauth2svc'] : "";
-				
-				if(($oauth2for == 'OutgoingServer' || $oauth2for == 'MailConverter' || $oauth2for == 'MailManager') && $oauth2svc == 'Office365') {
-					
-					$userinfo["email"] = $userinfo['mail'];
-					
-					if ($userinfo["email"]) {
-						$tokens = array("access_token" => $accessTokenValue, "refresh_token" => $refreshTokenValue);
-						$response = static::updateTokensFor($config, $oauth2for, $oauth2svc, $userinfo, $tokens, $accessTokenExpiresOn);
-						
-						if(!empty($response) && $oauth2for == 'MailConverter'){
-							unset($_SESSION['oauth2for']);
-							unset($_SESSION['oauth2state']);
-							unset($_SESSION['oauth2svc']);
-							
-							echo json_encode(array("scannerid" => $response['id']));
-							exit;
-							
-						}
-					}
-					
-				} else if ($userinfo["email"] && $userinfo["email_verified"]) {
+
+                error_log("Oauth2_Usercallback_Callbacks::handleRequest: authfor=$oauth2for, authsvc=$oauth2svc");
+                error_log("Oauth2_Usercallback_Callbacks::handleRequest: userinfo=" . print_r($userinfo, true));
+
+                if (($oauth2for == 'OutgoingServer' || $oauth2for == 'MailConverter' || $oauth2for == 'MailManager') && $oauth2svc == 'Office365') {
+
+                    $userinfo["email"] = $userinfo['mail'];
+
+                    if ($userinfo["email"]) {
+                        $tokens = array("access_token" => $accessTokenValue, "refresh_token" => $refreshTokenValue);
+                        $response = static::updateTokensFor($config, $oauth2for, $oauth2svc, $userinfo, $tokens, $accessTokenExpiresOn);
+
+                        if (!empty($response) && $oauth2for == 'MailConverter') {
+                            unset($_SESSION['oauth2for']);
+                            unset($_SESSION['oauth2state']);
+                            unset($_SESSION['oauth2svc']);
+
+                            echo json_encode(array("scannerid" => $response['id']));
+                            exit;
+                        }
+                    }
+                } else if ($userinfo["email"] && (!isset($userinfo["email_verified"]) || $userinfo["email_verified"])) {
                     $tokens = array("access_token" => $accessTokenValue, "refresh_token" => $refreshTokenValue);
                     static::updateTokensFor($config, $oauth2for, $oauth2svc, $userinfo, $tokens, $accessTokenExpiresOn);
                 }
@@ -179,8 +180,7 @@ class Oauth2_Usercallback_Callbacks {
                         header("Location: {$crmBaseUrl}/index.php?module=MailManager&view=List");
                         break;
                 }
-
-            } catch(Exception $e) {
+            } catch (Exception $e) {
                 unset($_SESSION['oauth2for']);
                 unset($_SESSION['oauth2state']);
                 unset($_SESSION['oauth2svc']);
@@ -193,7 +193,8 @@ class Oauth2_Usercallback_Callbacks {
         }
     }
 
-    protected static function updateTokensFor($config, $oauth2for, $oauth2svc, $userinfo, $tokens, $expireson) {
+    protected static function updateTokensFor($config, $oauth2for, $oauth2svc, $userinfo, $tokens, $expireson)
+    {
         $db = PearDatabase::getInstance();
 
         if ($oauth2for == "OutgoingServer") {
@@ -204,10 +205,14 @@ class Oauth2_Usercallback_Callbacks {
             if (strcasecmp($oauth2svc, "Google") === 0) {
                 $port = 465;
                 $server = "ssl://smtp.gmail.com:$port";
+            } else if (strcasecmp($oauth2svc, "Office365") === 0) {
+                $port = 587;
+                $server = "tls://smtp.office365.com:$port";
             }
-            
+
             if ($db->num_rows($checkRs)) {
-                $db->pquery("update vtiger_systems set server = ?, server_port = ?, server_username = ?, server_password = ?, smtp_auth = ?, smtp_auth_type = ?, smtp_auth_expireson = ? where server_type = ?",
+                $db->pquery(
+                    "update vtiger_systems set server = ?, server_port = ?, server_username = ?, server_password = ?, smtp_auth = ?, smtp_auth_type = ?, smtp_auth_expireson = ? where server_type = ?",
                     array(
                         $server,
                         $port,
@@ -220,7 +225,8 @@ class Oauth2_Usercallback_Callbacks {
                     )
                 );
             } else {
-                $db->pquery("insert into vtiger_systems (id, server, server_port, server_username, server_password, smtp_auth, smtp_auth_type, smtp_auth_expireson, server_type) values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                $db->pquery(
+                    "insert into vtiger_systems (id, server, server_port, server_username, server_password, smtp_auth, smtp_auth_type, smtp_auth_expireson, server_type) values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     array(
                         $db->getUniqueID("vtiger_systems"),
                         $server,
@@ -237,10 +243,10 @@ class Oauth2_Usercallback_Callbacks {
         } else if ($oauth2for == "MailConverter") {
             require_once "modules/Settings/MailConverter/handlers/MailScannerInfo.php";
 
-            $server = strcasecmp($oauth2svc, "Google") === 0? "imap.gmail.com" : "";
-            $proxy  = $server && isset($config["Proxies"]) && isset($config["Proxies"][$server])? $config["Proxies"][$server] : "";
+            $server = strcasecmp($oauth2svc, "Google") === 0 ? "imap.gmail.com" : "";
+            $proxy  = $server && isset($config["Proxies"]) && isset($config["Proxies"][$server]) ? $config["Proxies"][$server] : "";
 
-            $scanner = new Vtiger_MailScannerInfo(sprintf("%f",microtime(true)));
+            $scanner = new Vtiger_MailScannerInfo(sprintf("%f", microtime(true)));
             $scanner->scannername = $server;
             $scanner->server = $server;
             $scanner->protocol = "imap4";
@@ -255,19 +261,17 @@ class Oauth2_Usercallback_Callbacks {
 
             $oldscanner = new Vtiger_MailScannerInfo($scanner->scannername, true);
             $oldscanner->update($scanner);
-
-
         } else if ($oauth2for == "MailManager") {
 
             require_once "modules/MailManager/models/Mailbox.php";
-			
-			if (strcasecmp($oauth2svc, "Google") === 0) {
+
+            if (strcasecmp($oauth2svc, "Google") === 0) {
                 $server = "imap.gmail.com";
-			} else if (strcasecmp($oauth2svc, "Office365") === 0) {
+            } else if (strcasecmp($oauth2svc, "Office365") === 0) {
                 $server = "imap.office365.com";
-			}
-			
-			$proxy  = $server && isset($config["Proxies"]) && isset($config["Proxies"][$server])? $config["Proxies"][$server] : "";
+            }
+
+            $proxy  = $server && isset($config["Proxies"]) && isset($config["Proxies"][$server]) ? $config["Proxies"][$server] : "";
 
             if ($server) {
                 $mailbox = MailManager_Mailbox_Model::activeInstance();
@@ -285,5 +289,4 @@ class Oauth2_Usercallback_Callbacks {
             }
         }
     }
-
 }
