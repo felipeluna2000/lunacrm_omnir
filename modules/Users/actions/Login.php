@@ -22,6 +22,7 @@ class Users_Login_Action extends Vtiger_Action_Controller {
 	} 
 
 	function process(Vtiger_Request $request) {
+		global $site_URL;
 		if ($_SERVER["REQUEST_METHOD"] != "POST") {
                         echo "Invalid request";
                         exit();
@@ -47,9 +48,12 @@ class Users_Login_Action extends Vtiger_Action_Controller {
             if($is_use_two_factor_auth){
 
                 if(!$secretKey || $secretKey == '') {
-                    $g = new Sonata\GoogleAuthenticator\GoogleAuthenticator();
-                    $secret = $g->generateSecret();
-                    $qr_image = Sonata\GoogleAuthenticator\GoogleQrUrl::generate($username, $secret, parse_url($site_URL)['host']);
+                    $google2fa = new PragmaRX\Google2FA\Google2FA();
+                    $secret = $google2fa->generateSecretKey();
+                    $host = parse_url($site_URL)['host'];
+                    $qrCodeUrl = $google2fa->getQRCodeUrl($host, $username, $secret);
+                    $qr_image = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" . urlencode($qrCodeUrl);
+
                     echo json_encode(['status' => 'success', 'is_use_two_factor_auth' => true, 'qr_image' => $qr_image, 'secret' => $secret]);
                     exit;
                 } else {

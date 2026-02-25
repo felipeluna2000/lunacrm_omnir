@@ -389,8 +389,64 @@ class MailManager_Office365Message_Model extends Vtiger_MailRecord {
 
     public function getBodyHTML($safehtml=true) {
         $bodyhtml = parent::getBodyHTML();
+        
+        // Process inline images - replace cid: references with data URIs
+        $bodyhtml = $this->processInlineImages($bodyhtml);
+        
         if ($safehtml) $bodyhtml = MailManager_Utils_Helper::safe_html_string($bodyhtml);
         return $bodyhtml;
+    }
+
+    /**
+     * Process inline images in HTML body by replacing cid: references with data URIs
+     */
+    protected function processInlineImages($html) {
+        if (empty($html) || strpos($html, 'cid:') === false) {
+            return $html;
+        }
+        
+        $db = PearDatabase::getInstance();
+        $currentUserModel = Users_Record_Model::getCurrentUserModel();
+        
+        // Load all inline attachments (cid IS NOT NULL) for this email
+        $result = $db->pquery(
+            "SELECT attachid, aname, path, cid FROM vtiger_mailmanager_mailattachments 
+             WHERE userid=? AND muid=? AND cid IS NOT NULL",
+            array($currentUserModel->getId(), $this->muid())
+        );
+        
+        if ($db->num_rows($result) > 0) {
+            for ($i = 0; $i < $db->num_rows($result); $i++) {
+                $row = $db->raw_query_result_rowdata($result, $i);
+                $cid = $row['cid'];
+                
+                if (empty($cid)) continue;
+                
+                // Build file path
+                $binFile = sanitizeUploadFileName($row['aname'], vglobal('upload_badext'));
+                $filePath = $row['path'] . $row['attachid'] . '_' . $binFile;
+                
+                if (file_exists($filePath)) {
+                    // Read file and convert to base64 data URI
+                    $imageData = file_get_contents($filePath);
+                    $base64 = base64_encode($imageData);
+                    
+                    // Detect MIME type
+                    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+                    $mimeType = finfo_file($finfo, $filePath);
+                    finfo_close($finfo);
+                    
+                    // Create data URI
+                    $dataUri = 'data:' . $mimeType . ';base64,' . $base64;
+                    
+                    // Replace all occurrences of cid: reference with data URI
+                    // Replace cid: references with data URI
+                    $html = str_replace('cid:' . $cid, $dataUri, $html);
+                }
+            }
+        }
+        
+        return $html;
     }
 
     public function from($maxlen=0) {
@@ -448,7 +504,13 @@ class MailManager_Office365Message_Model extends Vtiger_MailRecord {
         foreach ($to as $ea) {
             if (!empty($ea['emailAddress']['address'])) $to_address[] = $ea['emailAddress']['address'];
         }
-        if (!empty($to_address)) $to_address = implode(", ", $to_address);
+      
+		if (!empty($to_address)) {
+			$to_address = implode(", ", $to_address);
+		} else {
+			$to_address = '';
+		}
+		
         $instance->setTo($to_address);
 
         $date = new DateTime($result['receivedDateTime']);

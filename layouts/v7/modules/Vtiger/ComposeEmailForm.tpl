@@ -41,6 +41,29 @@
                     {if !empty($SEARCH_PARAMS)}
                         <input type="hidden" name="search_params" value='{Vtiger_Util_Helper::toSafeHTML(ZEND_JSON::encode($SEARCH_PARAMS))}' />
                     {/if}
+					
+					<div class="row">
+						<div class="col-lg-12">
+							<div class="col-lg-2">
+								<span class="">From &nbsp;<span class="redColor">*</span></span>
+							</div>
+							<div class="col-lg-6">
+								<select class="from_field select2" name="fromemail"  style="width:100%;">
+									{foreach from=$MAIL_ACCOUNTS item=serverinfo}
+										<option value="{$serverinfo["account_id"]}">{$serverinfo["account_name"]}</option>
+									{/foreach}
+									{if $SYSTEM_EMAIL neq ''}
+										<option value="">{$SYSTEM_EMAIL}</option>
+									{/if}
+								</select>
+							</div>
+							<div class="col-lg-4">
+								&nbsp;
+							</div>
+						</div>
+						<div class="col-lg-4"></div>
+					</div>
+					
                     
                     <div class="row toEmailField">
                         <div class="col-lg-12">

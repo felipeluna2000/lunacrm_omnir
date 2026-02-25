@@ -35,6 +35,7 @@ class Vtiger_Mailer_xOauth2Provider implements \PHPMailer\PHPMailer\OAuthTokenPr
 class Vtiger_Mailer extends \PHPMailer\PHPMailer\PHPMailer {
 
 	var $_serverConfigured = false;
+	var $from_email = false;
 
 	/**
 	 * Constructor
@@ -64,11 +65,30 @@ class Vtiger_Mailer extends \PHPMailer\PHPMailer\PHPMailer {
 		$this->IsSMTP();
 
 		global $adb;
-		$result = $adb->pquery("SELECT * FROM vtiger_systems WHERE server_type=?", Array('email'));
+		
+		if(!$this->from_email){
+			$result = $adb->pquery("SELECT * FROM vtiger_systems WHERE server_type=?", Array('email'));
+		} else {
+			$result = $adb->pquery("SELECT mail_servername as server, mail_username as server_username, mail_password as server_password,  
+			auth_type as smtp_auth_type, 1 as smtp_auth,  mail_username as from_email_field
+			FROM vtiger_mail_accounts WHERE
+            account_id = ?", array($this->from_email), true);
+	    }
+		
 		if($adb->num_rows($result)) {
 			$this->Host = $adb->query_result($result, 0, 'server');
 			$this->Username = decode_html($adb->query_result($result, 0, 'server_username'));
-			$this->Password = Vtiger_Functions::fromProtectedText(decode_html($adb->query_result($result, 0, 'server_password')));
+			
+			if(!$this->from_email){
+				$this->Password = Vtiger_Functions::fromProtectedText(decode_html($adb->query_result($result, 0, 'server_password')));
+			} else {
+				require_once('include/utils/encryption.php');
+				$e = new Encryption();
+				$password = decode_html($adb->query_result($result, 0, 'server_password'));
+				$password = $e->decrypt($password);
+				$this->Password = $password;
+			}
+			
 			$this->SMTPAuth = $adb->query_result($result, 0, 'smtp_auth');
 			$SMTPAuthType = $adb->query_result($result, 0, 'smtp_auth_type'); // prasad
 
@@ -161,12 +181,110 @@ class Vtiger_Mailer extends \PHPMailer\PHPMailer\PHPMailer {
 	 * Overriding default send
 	 */
 	function Send($sync=false, $linktoid=false) {
-		if(!$this->_serverConfigured) return;
+		
+		if(stripos($this->Host, "outlook") !== FALSE || stripos($this->Host, "office365") !== FALSE){
+			
+			$tokens = json_decode($this->Password, true);
+			
+			$access_token = $tokens['access_token'];
+			
+            $attachments =  array();
+            
+            foreach($this->attachment as $attachmnents_file){
+                $binary_content = base64_encode(file_get_contents($attachmnents_file[0]));
+                $attachmentFileName = basename($attachmnents_file[0]);
+                $attachments[] = array(
+					'@odata.type' => '#microsoft.graph.fileAttachment',
+					'contentBytes' => $binary_content, 
+					'name' => $attachmentFileName
+				);
+            }
+            
+            
+            $cc_email = array();
+            
+            if(!empty($this->cc[0])) {
+                foreach($this->cc[0] as $cc){
+                    if($cc){
+                        $cc_email[] = ['emailAddress' => ['address' => $cc]];
+                    }
+                }
+            }
+            
+            $bcc_email = array();
+            
+            if(!empty($this->bcc[0])) {
+                foreach($this->bcc[0] as $bcc) {
+                    if($bcc){
+                        $bcc_email[] = ['emailAddress' => ['address' => $bcc]];
+                    }
+                }
+            }
+            
+            
+            $emails = array();
+            
+            foreach($this->to[0] as $to_email){
+                if($to_email){
+                    $emails[] = ['emailAddress' => ['address' => $to_email]];
+                }
+            }
+			
+			
+			$emailData = [
+				'message' => [
+					'subject' => $this->Subject,
+					'body' => [
+						'contentType' => 'HTML',
+						'content' => $this->Body
+					],
+					'toRecipients' => $emails,
+					'ccRecipients' => $cc_email,
+					'bccRecipients' => $bcc_email,
+					'attachments' => $attachments
+				],
+				'saveToSentItems' => true
+			];
+			
+			$url = "https://graph.microsoft.com/v1.0/me/sendmail";
+			
+			$ch = curl_init($url);
+			curl_setopt($ch, CURLOPT_POST, true);
+			
+			curl_setopt($ch, CURLOPT_HTTPHEADER, [
+				'Authorization: Bearer ' . $access_token,
+				'Content-Type: application/json',
+			]);
+			curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+			
+			
+			curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+			curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($emailData));
+			
+			$response = curl_exec($ch);
+			
+			$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+			
+			$error = curl_error($ch);
+			
+			curl_close($ch);
+			
+			if($httpCode == 202){
+				return true;
+			}
+			
+			
+            return $response;
+			
+		} else {
+		
+			if(!$this->_serverConfigured) return;
 
-		if($sync) return parent::Send();
+			if($sync) return parent::Send();
 
-		$this->__AddToQueue($linktoid);
-		return true;
+			$this->__AddToQueue($linktoid);
+			return true;
+		}
 	}
 
 	/**

@@ -90,6 +90,7 @@ class MailManager_Relation_View extends MailManager_Abstract_View {
 					}
 				}
 				$viewer->assign('LOOKUPS', $results);
+				$viewer->assign('LINKEDTO', '');
 			} else {
 				$viewer->assign('LINKEDTO', $linkedto);
 			}

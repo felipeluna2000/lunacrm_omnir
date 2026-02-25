@@ -40,9 +40,9 @@ class Users_LoginOtp_Action extends Vtiger_Action_Controller {
 
             $secret = (!$secretKey || $secretKey == '') ? $request->get('secret') : $secretKey;
             
-            $g = new Sonata\GoogleAuthenticator\GoogleAuthenticator();
+            $google2fa = new PragmaRX\Google2FA\Google2FA();
 
-            if ($g->checkCode($secret, $otpCode)) {
+            if ($google2fa->verifyKey($secret, $otpCode)) {
                 
                 if(!$secretKey || $secretKey == '') {
                     $db->pquery('UPDATE vtiger_users SET secret_key = ? 

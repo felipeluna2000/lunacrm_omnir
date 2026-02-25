@@ -292,6 +292,11 @@ class Oauth2_Usercallback_Callbacks
                 $mailbox->setFolder("INBOX");
                 $mailbox->setCertValidate(false);
                 $mailbox->setSSLType("SSL");
+				
+				if (strcasecmp($oauth2svc, "Office365") === 0) {
+					$mailbox->setRefreshTimeOut("300000");
+				}
+				
                 if ($proxy) $mailbox->setMailProxy($proxy);
                 $mailbox->save();
             }

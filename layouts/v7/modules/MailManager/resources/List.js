@@ -110,12 +110,14 @@ Vtiger_List_Js("MailManager_List_Js", {}, {
 				self.handleSettingsEvents(data);
 				self.registerDeleteMailboxEvent(data);
 				self.registerSaveMailboxEvent(data);
+				
 			});
 		});
 	},
 
 	handleSettingsEvents : function(data) {
 		var settingContainer = jQuery(data);
+		
 		settingContainer.find('#serverType').on('change', function(e) {
 			var element = jQuery(e.currentTarget);
 			var serverType = element.val();
@@ -182,6 +184,11 @@ Vtiger_List_Js("MailManager_List_Js", {}, {
 				});
 			}
 		});
+		
+		if(settingContainer.find('#serverType').val() == 'Office365'){
+			settingContainer.find('#serverType').trigger('change');
+		}
+		
 	},
 
 	registerDeleteMailboxEvent : function(data) {
