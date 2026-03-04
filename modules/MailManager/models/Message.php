@@ -470,6 +470,7 @@ class MailManager_Message_Model extends Vtiger_MailRecord  {
 	 */
 	public function from($maxlen = 0) {
 		$fromString = $this->_from;
+		$fromString = str_replace(array('<', '>'), array('(', ')'), $fromString);
 		if ($maxlen && mb_strlen($fromString, 'UTF-8') > $maxlen) {
 			$fromString = mb_substr($fromString, 0, $maxlen-3, 'UTF-8').'...';
 		}
@@ -500,6 +501,7 @@ class MailManager_Message_Model extends Vtiger_MailRecord  {
 	 */
 	public function to($maxlen = 0) {
 		$toString =  $this->_to;
+		$toString = str_replace(array('<', '>'), array('(', ')'), $toString);
 		if ($maxlen && mb_strlen($toString, 'UTF-8') > $maxlen) {
 			$toString = mb_substr($toString, 0, $maxlen-3, 'UTF-8').'...';
 		}

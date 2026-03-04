@@ -384,9 +384,6 @@
                 {/if}
 
                 {assign var=DISPLAY_NAME value=$MAIL->from(40)}
-                {if $IS_SENT_FOLDER}
-                    {assign var=DISPLAY_NAME value=$MAIL->to(40)}
-                {/if}
                 {assign var=FIRST_LETTER value=strtoupper(substr(strip_tags($DISPLAY_NAME), 0, 1))}
 
                 <div class="ml-entry mailEntry {if $IS_READ}mmReadEmail{/if}"
